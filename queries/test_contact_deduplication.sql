@@ -70,6 +70,4 @@ SELECT
   FIRST(confidence_reasoning) as confidence_reasoning
 FROM contact_groups
 GROUP BY contact_group_key
-HAVING COUNT(*) > 1
-ORDER BY duplicate_count DESC, avg_confidence DESC
-LIMIT 20;
+ORDER BY duplicate_count DESC, avg_confidence DESC;

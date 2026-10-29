@@ -79,6 +79,4 @@ SELECT
   COLLECT_LIST(hs_object_id) as hubspot_ids
 FROM company_groups
 GROUP BY company_group_key
-HAVING COUNT(*) > 1
-ORDER BY duplicate_count DESC
-LIMIT 50;
+ORDER BY duplicate_count DESC, company_group_key ASC;
