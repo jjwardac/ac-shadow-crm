@@ -1,0 +1,49 @@
+resources:
+  jobs:
+    shadow_crm_sync_job:
+      name: shadow-crm-sync-job
+      description: "Daily deduplication of HubSpot companies and contacts into shadow_crm schema for enrichment and unified record management"
+
+      run_as:
+        service_principal_name: ${var.sp_id}
+
+      permissions:
+        - level: CAN_MANAGE
+          group_name: revops
+
+      # Daily at 2 AM Eastern (chosen to avoid peak hours)
+      schedule:
+        quartz_cron_expression: "0 0 2 * * ?"
+        timezone_id: "America/New_York"
+        pause_status: UNPAUSED
+
+      queue:
+        enabled: true
+
+      max_concurrent_runs: 1
+
+      budget_policy_id: ${var.budget_policy}
+
+      # Notifications for failures
+      webhook_notifications:
+        on_failure:
+          - id: ${var.slack_notification_id}
+
+      notification_settings:
+        no_alert_for_skipped_runs: true
+        no_alert_for_canceled_runs: true
+
+      # Dependencies: databricks-sdk for WorkspaceClient
+      environments:
+        - environment_key: default
+          spec:
+            client: "3"
+            dependencies:
+              - databricks-sdk==0.157.0
+
+      tasks:
+        - task_key: deduplicate-and-sync
+          environment_key: default
+          spark_python_task:
+            python_file: ../pipeline/main_shadow_crm.py
+            parameters: ["--catalog", "${var.catalog}", "--schema", "shadow_crm"]
