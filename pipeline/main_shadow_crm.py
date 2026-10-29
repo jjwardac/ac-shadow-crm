@@ -34,11 +34,18 @@ def deduplicate_companies(catalog: str, schema: str) -> int:
         LOWER(TRIM(legal_entity_name)) as normalized_legal_entity,
         LOWER(TRIM(domain)) as normalized_domain,
         LOWER(TRIM(linkedin_company_page)) as normalized_linkedin,
-        CASE 
-          WHEN LOWER(TRIM(name)) LIKE '%project%' OR LOWER(TRIM(name)) LIKE '%deal%' 
-          THEN LOWER(REGEXP_REPLACE(TRIM(name), '(project|deal|engagement)[- ]?', ''))
-          ELSE LOWER(TRIM(name))
-        END as normalized_name_without_project
+        -- Strip "Demo -", "Unknown -", etc. prefixes, then extract base name
+        LOWER(TRIM(REGEXP_REPLACE(
+          REGEXP_REPLACE(legal_entity_name, '(?i)^(demo|unknown|project|test)[- ]+', ''),
+          '(^.+?)\s*[-–—].*',
+          '$1'
+        ))) as base_legal_entity,
+        -- Strip "Demo -", "Unknown -", then extract project/company name
+        LOWER(TRIM(REGEXP_REPLACE(
+          REGEXP_REPLACE(name, '(?i)^(demo|unknown|test)[- ]+', ''),
+          '(?i)^project[- ]+([^-]+).*',
+          '$1'
+        ))) as extracted_company_name
       FROM `raw-external-prod`.`hubspot`.`companies`
       WHERE hs_object_id IS NOT NULL
         AND ingest_date = (SELECT max_date FROM latest_ingest)
@@ -52,22 +59,23 @@ def deduplicate_companies(catalog: str, schema: str) -> int:
         linkedin_company_page,
         COALESCE(
           CASE 
-            WHEN normalized_domain IS NOT NULL AND normalized_legal_entity IS NOT NULL 
-            THEN CONCAT(normalized_domain, '|', normalized_legal_entity)
+            WHEN extracted_company_name IS NOT NULL AND extracted_company_name NOT IN ('', 'project', 'demo', 'unknown', 'test')
+            THEN extracted_company_name
             ELSE NULL
           END,
           CASE 
-            WHEN normalized_domain IS NOT NULL AND normalized_name_without_project IS NOT NULL 
-            THEN CONCAT(normalized_domain, '|', normalized_name_without_project)
+            WHEN base_legal_entity IS NOT NULL AND base_legal_entity NOT IN ('', 'project', 'demo', 'unknown', 'test')
+            THEN base_legal_entity
             ELSE NULL
           END,
           CASE 
-            WHEN normalized_legal_entity IS NOT NULL 
-            THEN normalized_legal_entity
+            WHEN normalized_domain IS NOT NULL AND normalized_domain != '' 
+              AND base_legal_entity IS NOT NULL AND base_legal_entity NOT IN ('', 'project', 'demo', 'unknown', 'test')
+            THEN CONCAT(normalized_domain, '|', base_legal_entity)
             ELSE NULL
           END,
           CASE 
-            WHEN normalized_linkedin IS NOT NULL 
+            WHEN normalized_linkedin IS NOT NULL AND normalized_linkedin != ''
             THEN normalized_linkedin
             ELSE NULL
           END,
